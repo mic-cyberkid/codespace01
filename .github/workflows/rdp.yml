@@ -8,16 +8,20 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 360
 
+    env:
+      RDP_USER: developer
+      RDP_PASS: Dev@12345!Strong
+
     steps:
     - name: Enable RDP
       run: |
         Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-    - name: Create RDP user
+    - name: Create RDP user (PASSWORD FIX)
       run: |
-        net user developer developer /add
-        net localgroup administrators developer /add
+        net user $env:RDP_USER $env:RDP_PASS /add
+        net localgroup administrators $env:RDP_USER /add
 
     - name: Download & Configure ngrok
       run: |
