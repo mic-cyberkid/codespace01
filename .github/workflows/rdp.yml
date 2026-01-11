@@ -1,72 +1,43 @@
-name: RDP Android Studio
+name: Windows RDP Android Studio
 
 on:
   workflow_dispatch:
 
 jobs:
   rdp:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     timeout-minutes: 360
 
     steps:
-    - name: Update system
+    - name: Enable RDP
       run: |
-        sudo apt-get clean
-        sudo rm -rf /var/lib/apt/lists/*
-        sudo apt-get update
+        Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-    - name: Install desktop + xrdp
+    - name: Create RDP user
       run: |
-        sudo apt-get install -y --no-install-recommends \
-          xfce4 \
-          xfce4-goodies \
-          xrdp \
-          dbus-x11 \
-          x11-xserver-utils
-        sudo systemctl enable xrdp
+        net user developer developer /add
+        net localgroup administrators developer /add
 
-    - name: Disable Wayland
+    - name: Download & Configure ngrok
       run: |
-        sudo sed -i 's/^#WaylandEnable=false/WaylandEnable=false/' /etc/gdm3/custom.conf || true
-
-    - name: Configure XRDP to start XFCE
-      run: |
-        sudo tee /etc/xrdp/startwm.sh > /dev/null << 'EOF'
-        #!/bin/sh
-        unset DBUS_SESSION_BUS_ADDRESS
-        unset XDG_RUNTIME_DIR
-        exec startxfce4 &
-        EOF
-        sudo chmod +x /etc/xrdp/startwm.sh
-
-    - name: Create user
-      run: |
-        sudo useradd -m developer
-        echo "developer:developer" | sudo chpasswd
-        sudo adduser developer sudo
-
-    - name: Restart XRDP
-      run: |
-        sudo systemctl restart xrdp
-
-    - name: Install Android Studio
-      run: |
-        sudo snap install android-studio --classic
-
-    - name: Install ngrok
-      run: |
-        wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
-        tar -xvf ngrok-v3-stable-linux-amd64.tgz
-        sudo mv ngrok /usr/local/bin/ngrok
-        ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+        Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
+        Expand-Archive ngrok.zip
+        .\ngrok\ngrok.exe config add-authtoken $env:NGROK_AUTH_TOKEN
+      env:
+        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
     - name: Start ngrok tunnel
       run: |
-        ngrok tcp 3389 &
-        sleep 10
-        curl -s http://127.0.0.1:4040/api/tunnels
+        Start-Process -NoNewWindow -FilePath ".\ngrok\ngrok.exe" -ArgumentList "tcp 3389"
+        Start-Sleep -Seconds 10
+        Invoke-RestMethod http://127.0.0.1:4040/api/tunnels
+
+    - name: Install Android Studio
+      run: |
+        choco install androidstudio -y
 
     - name: Keep alive
       run: |
-        echo "RDP is running..."
-        sleep 21600
+        Write-Host "RDP is running..."
+        Start-Sleep -Seconds 21600
