@@ -9,22 +9,35 @@ jobs:
     timeout-minutes: 360
 
     steps:
-    - name: Update system (IMPORTANT)
+    - name: Update system
       run: |
         sudo apt-get clean
         sudo rm -rf /var/lib/apt/lists/*
         sudo apt-get update
-        sudo apt-get upgrade -y
 
-    - name: Install Desktop Environment
+    - name: Install desktop + xrdp
       run: |
         sudo apt-get install -y --no-install-recommends \
           xfce4 \
           xfce4-goodies \
           xrdp \
-          dbus-x11
+          dbus-x11 \
+          x11-xserver-utils
         sudo systemctl enable xrdp
-        echo xfce4-session > ~/.xsession
+
+    - name: Disable Wayland
+      run: |
+        sudo sed -i 's/^#WaylandEnable=false/WaylandEnable=false/' /etc/gdm3/custom.conf || true
+
+    - name: Configure XRDP to start XFCE
+      run: |
+        sudo tee /etc/xrdp/startwm.sh > /dev/null << 'EOF'
+        #!/bin/sh
+        unset DBUS_SESSION_BUS_ADDRESS
+        unset XDG_RUNTIME_DIR
+        exec startxfce4 &
+        EOF
+        sudo chmod +x /etc/xrdp/startwm.sh
 
     - name: Create user
       run: |
@@ -32,9 +45,8 @@ jobs:
         echo "developer:developer" | sudo chpasswd
         sudo adduser developer sudo
 
-    - name: Configure XRDP
+    - name: Restart XRDP
       run: |
-        sudo sed -i 's/^port=3389/port=3389/' /etc/xrdp/xrdp.ini
         sudo systemctl restart xrdp
 
     - name: Install Android Studio
