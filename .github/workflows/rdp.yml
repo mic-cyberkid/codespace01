@@ -9,9 +9,20 @@ jobs:
     timeout-minutes: 360
 
     steps:
+    - name: Update system (IMPORTANT)
+      run: |
+        sudo apt-get clean
+        sudo rm -rf /var/lib/apt/lists/*
+        sudo apt-get update
+        sudo apt-get upgrade -y
+
     - name: Install Desktop Environment
       run: |
-        sudo apt install -y xfce4 xfce4-goodies xrdp dbus-x11
+        sudo apt-get install -y --no-install-recommends \
+          xfce4 \
+          xfce4-goodies \
+          xrdp \
+          dbus-x11
         sudo systemctl enable xrdp
         echo xfce4-session > ~/.xsession
 
