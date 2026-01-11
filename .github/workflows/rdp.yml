@@ -10,7 +10,7 @@ jobs:
 
     env:
       RDP_USER: developer
-      RDP_PASS: Dev@12345!Strong
+      RDP_PASS: Dev@12345!
 
     steps:
     - name: Enable RDP
@@ -18,9 +18,9 @@ jobs:
         Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-    - name: Create RDP user (PASSWORD FIX)
+    - name: Create RDP user (NON-INTERACTIVE)
       run: |
-        net user $env:RDP_USER $env:RDP_PASS /add
+        net user $env:RDP_USER $env:RDP_PASS /add /y
         net localgroup administrators $env:RDP_USER /add
 
     - name: Download & Configure ngrok
