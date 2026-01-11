@@ -1,0 +1,53 @@
+name: RDP Android Studio
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rdp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+    - name: Update system
+      run: |
+        sudo apt update && sudo apt upgrade -y
+
+    - name: Install Desktop Environment
+      run: |
+        sudo apt install -y xfce4 xfce4-goodies xrdp dbus-x11
+        sudo systemctl enable xrdp
+        echo xfce4-session > ~/.xsession
+
+    - name: Create user
+      run: |
+        sudo useradd -m developer
+        echo "developer:developer" | sudo chpasswd
+        sudo adduser developer sudo
+
+    - name: Configure XRDP
+      run: |
+        sudo sed -i 's/^port=3389/port=3389/' /etc/xrdp/xrdp.ini
+        sudo systemctl restart xrdp
+
+    - name: Install Android Studio
+      run: |
+        sudo snap install android-studio --classic
+
+    - name: Install ngrok
+      run: |
+        wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
+        tar -xvf ngrok-v3-stable-linux-amd64.tgz
+        sudo mv ngrok /usr/local/bin/ngrok
+        ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+
+    - name: Start ngrok tunnel
+      run: |
+        ngrok tcp 3389 &
+        sleep 10
+        curl -s http://127.0.0.1:4040/api/tunnels
+
+    - name: Keep alive
+      run: |
+        echo "RDP is running..."
+        sleep 21600
