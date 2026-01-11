@@ -35,7 +35,7 @@ jobs:
       run: |
         Start-Process -NoNewWindow -FilePath ".\ngrok\ngrok.exe" -ArgumentList "tcp 3389"
         Start-Sleep -Seconds 10
-        Invoke-RestMethod http://127.0.0.1:4040/api/tunnels
+        curl http://127.0.0.1:4040/api/tunnels
 
     - name: Install Android Studio
       run: |
