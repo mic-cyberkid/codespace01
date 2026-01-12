@@ -10,7 +10,7 @@ jobs:
 
     env:
       RDP_USER: developer
-      RDP_PASS: Dev@12345!   # Change if needed; remember it!
+      RDP_PASS: Dev@12345!   # CHANGE THIS to a strong password you remember!
 
     steps:
       - name: Enable RDP fully
@@ -25,58 +25,68 @@ jobs:
           net user ${{ env.RDP_USER }} "${{ env.RDP_PASS }}" /add /y
           net localgroup administrators ${{ env.RDP_USER }} /add
 
-      - name: Download and extract ngrok
-        env:
-          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-        run: |
-          Invoke-WebRequest -Uri https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
-          Expand-Archive ngrok.zip -Force
-          if (-Not (Test-Path .\ngrok.exe)) { Write-Error "ngrok.exe not found after unzip!"; exit 1 }
-          .\ngrok.exe config add-authtoken $env:NGROK_AUTH_TOKEN
-
-      - name: Start ngrok TCP tunnel in background
-        run: |
-          Start-Process -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389 --log=stdout" -NoNewWindow -RedirectStandardOutput "ngrok.log" -RedirectStandardError "ngrok.err"
-
-      - name: Wait and display ngrok connection info
-        run: |
-          $maxWait = 180  # 3 min max
-          $slept = 0
-          while ($slept -lt $maxWait) {
-            try {
-              $json = Invoke-RestMethod -Uri http://127.0.0.1:4040/api/tunnels -ErrorAction Stop
-              $tcp = $json.tunnels | Where-Object { $_.proto -eq "tcp" }
-              if ($tcp) {
-                $addr = $tcp.public_url -replace 'tcp://', ''
-                Write-Host "====================================="
-                Write-Host "RDP READY! Connect immediately:"
-                Write-Host "Server: $addr"
-                Write-Host "Username: ${{ env.RDP_USER }}"
-                Write-Host "Password: ${{ env.RDP_PASS }}"
-                Write-Host "Use Microsoft Remote Desktop (or Remmina/AnyDesk RDP) on your device."
-                Write-Host "====================================="
-                break
-              }
-            } catch {
-              Write-Host "Ngrok tunnel API not ready yet... ($slept s elapsed)"
-            }
-            Start-Sleep -Seconds 10
-            $slept += 10
-          }
-          if ($slept -ge $maxWait) {
-            Get-Content ngrok.err -ErrorAction SilentlyContinue
-            Write-Error "Ngrok failed to create tunnel - check logs above."
-          }
-
-      - name: Install Chocolatey and Android Studio (may take 5-15 min)
+      - name: Install Chocolatey
         run: |
           Set-ExecutionPolicy Bypass -Scope Process -Force
           [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
           iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
           choco feature enable -n allowGlobalConfirmation
-          choco install androidstudio -y --ignore-checksums --force
 
-      - name: Keep alive until timeout
+      - name: Install ngrok via Chocolatey
         run: |
-          Write-Host "RDP session is live - connect using the info above."
-          while ($true) { Start-Sleep -Seconds 300; Write-Host "Session still active... $(Get-Date)" }
+          choco install ngrok -y
+          ngrok --version   # Confirm install
+
+      - name: Configure ngrok authtoken
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+        run: |
+          ngrok config add-authtoken $env:NGROK_AUTH_TOKEN
+          Write-Host "Authtoken set successfully"
+
+      - name: Start ngrok TCP tunnel in background
+        run: |
+          Start-Process -FilePath "ngrok" -ArgumentList "tcp 3389 --log=stdout" -NoNewWindow -RedirectStandardOutput "ngrok.log" -RedirectStandardError "ngrok.err"
+
+      - name: Wait and display ngrok connection info
+        run: |
+          $maxWait = 180  # 3 minutes max wait
+          $slept = 0
+          while ($slept -lt $maxWait) {
+            try {
+              $json = Invoke-RestMethod -Uri http://127.0.0.1:4040/api/tunnels -ErrorAction Stop
+              $tcpTunnel = $json.tunnels | Where-Object { $_.proto -eq "tcp" }
+              if ($tcpTunnel) {
+                $addr = $tcpTunnel.public_url -replace 'tcp://', ''
+                Write-Host "====================================="
+                Write-Host "RDP READY! Connect now:"
+                Write-Host "Server: $addr"
+                Write-Host "Username: ${{ env.RDP_USER }}"
+                Write-Host "Password: ${{ env.RDP_PASS }}"
+                Write-Host "Tip: Use Microsoft Remote Desktop app on your phone/PC. Ignore cert warnings."
+                Write-Host "====================================="
+                break
+              }
+            } catch {
+              Write-Host "Tunnel not ready yet... ($slept s elapsed). Checking again soon."
+            }
+            Start-Sleep -Seconds 10
+            $slept += 10
+          }
+          if ($slept -ge $maxWait) {
+            Get-Content ngrok.err -ErrorAction SilentlyContinue | Write-Host
+            Write-Error "Ngrok tunnel failed to start - see ngrok.err above for clues (bad token? network?). Retry workflow."
+          }
+
+      - name: Install Android Studio via Chocolatey (takes 5-15 min, optional for testing)
+        run: |
+          choco install androidstudio -y --ignore-checksums --force
+          Write-Host "Android Studio installed (or attempted). Launch via RDP desktop/start menu."
+
+      - name: Keep session alive
+        run: |
+          Write-Host "RDP is live - use the connection info above to connect."
+          while ($true) {
+            Start-Sleep -Seconds 300
+            Write-Host "Session still running... $(Get-Date)"
+          }
