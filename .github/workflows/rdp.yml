@@ -1,20 +1,56 @@
-name: RDP
+name: Windows RustDesk Remote Access
 
-on:
-  workflow_dispatch:
+on: [workflow_dispatch]
 
 jobs:
-  build:
-    name: Start Building...
+  rustdesk-access:
     runs-on: windows-latest
+    timeout-minutes: 360
+    env:
+      RUSTDESK_PASSWORD: YourStrongPass123!   # CHANGE THIS - set a strong one
     steps:
-      - name: Downloading & Installing Essentials
+      - name: Install Chocolatey (if not present)
         run: |
-          Invoke-WebRequest -Uri "https://www.dropbox.com/scl/fi/qdyd4p9t6xoabl95n5o3g/Downloads.bat?rlkey=snr74vv1vr8k5suujugvrhjtm&dl=1" -OutFile "Downloads.bat"
-          cmd /c Downloads.bat
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+          choco feature enable -n allowGlobalConfirmation
 
-      - name: Log In To AnyDesk
-        run: cmd /c show.bat
+      - name: Install RustDesk silently via Chocolatey
+        run: |
+          choco install rustdesk.install -y --force
+          # Alternative: winget install --id RustDesk.RustDesk -e --silent --accept-package-agreements --accept-source-agreements
+          # Or direct download + silent:
+          # Invoke-WebRequest -Uri "https://github.com/rustdesk/rustdesk/releases/download/1.4.5/rustdesk-1.4.5-x86_64.exe" -OutFile rustdesk.exe
+          # .\rustdesk.exe --silent-install
 
-      - name: Time Counter
-        run: python time.py
+      - name: Set permanent password & start RustDesk service
+        run: |
+          # RustDesk CLI for config (run after install)
+          & "C:\Program Files\RustDesk\rustdesk.exe" --password "$env:RUSTDESK_PASSWORD"
+          # Install as service for persistence
+          & "C:\Program Files\RustDesk\rustdesk.exe" --install-service
+          Start-Service -Name RustDesk
+
+      - name: Get RustDesk ID (important - log this!)
+        run: |
+          $id = & "C:\Program Files\RustDesk\rustdesk.exe" --get-id
+          Write-Host "RustDesk ID: $id"
+          Write-Host "Password: $env:RUSTDESK_PASSWORD"
+          Write-Host "Connect from your local RustDesk client using this ID + password"
+
+      
+      - name: Display connection info & wait
+        run: |
+          Start-Sleep -Seconds 30  # wait for RustDesk to init
+          $id = & "C:\Program Files\RustDesk\rustdesk.exe" --get-id
+          Write-Host "====================================="
+          Write-Host "RustDesk READY!"
+          Write-Host "ID: $id"
+          Write-Host "Password: $env:RUSTDESK_PASSWORD"
+          Write-Host "Download RustDesk client locally: https://rustdesk.com/"
+          Write-Host "Connect using public relay (default) or ngrok if tunneled."
+          Write-Host "If black screen: Try software rendering (--render=software) or virtual display in client settings."
+          Write-Host "====================================="
+          # Keep alive
+          while ($true) { Start-Sleep -Seconds 300; Write-Host "Session alive $(Get-Date)" }
