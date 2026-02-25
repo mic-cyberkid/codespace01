@@ -1,99 +1,20 @@
-name: Windows RDP for Android Studio
+name: RDP
 
 on:
   workflow_dispatch:
 
 jobs:
-  rdp:
+  build:
+    name: Start Building...
     runs-on: windows-latest
-    timeout-minutes: 360
-
-    env:
-      RDP_USER: developer
-      RDP_PASS: Dev@12345!   # CHANGE THIS to a strong password you remember!
-
     steps:
-      - name: Enable RDP fully
+      - name: Downloading & Installing Essentials
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Type DWord
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Set-Service -Name TermService -StartupType Automatic
-          Start-Service -Name TermService -ErrorAction SilentlyContinue
+          Invoke-WebRequest -Uri "https://www.dropbox.com/scl/fi/qdyd4p9t6xoabl95n5o3g/Downloads.bat?rlkey=snr74vv1vr8k5suujugvrhjtm&dl=1" -OutFile "Downloads.bat"
+          cmd /c Downloads.bat
 
-      - name: Disable WDDM for RDP (fix black screen)
-        run: |
-          reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v fEnableWddmDriver /t REG_DWORD /d 0 /f
-          reg add "HKLM\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v fEnableWddmDriver /t REG_DWORD /d 0 /f
-          # Optional: disable UDP to reduce protocol issues
-          reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services\Client" /v fClientDisableUDP /t REG_DWORD /d 1 /f
+      - name: Log In To AnyDesk
+        run: cmd /c show.bat
 
-      - name: Create or update RDP user
-        run: |
-          net user ${{ env.RDP_USER }} "${{ env.RDP_PASS }}" /add /y
-          net localgroup administrators ${{ env.RDP_USER }} /add
-
-      - name: Install Chocolatey
-        run: |
-          Set-ExecutionPolicy Bypass -Scope Process -Force
-          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-          choco feature enable -n allowGlobalConfirmation
-
-      - name: Install ngrok via Chocolatey
-        run: |
-          choco install ngrok -y
-          ngrok --version   # Confirm install
-
-      - name: Configure ngrok authtoken
-        env:
-          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-        run: |
-          ngrok config add-authtoken $env:NGROK_AUTH_TOKEN
-          Write-Host "Authtoken set successfully"
-
-      - name: Start ngrok TCP tunnel in background
-        run: |
-          Start-Process -FilePath "ngrok" -ArgumentList "tcp 3389 --log=stdout" -NoNewWindow -RedirectStandardOutput "ngrok.log" -RedirectStandardError "ngrok.err"
-
-      - name: Wait and display ngrok connection info
-        run: |
-          $maxWait = 180  # 3 minutes max wait
-          $slept = 0
-          while ($slept -lt $maxWait) {
-            try {
-              $json = Invoke-RestMethod -Uri http://127.0.0.1:4040/api/tunnels -ErrorAction Stop
-              $tcpTunnel = $json.tunnels | Where-Object { $_.proto -eq "tcp" }
-              if ($tcpTunnel) {
-                $addr = $tcpTunnel.public_url -replace 'tcp://', ''
-                Write-Host "====================================="
-                Write-Host "RDP READY! Connect now:"
-                Write-Host "Server: $addr"
-                Write-Host "Username: ${{ env.RDP_USER }}"
-                Write-Host "Password: ${{ env.RDP_PASS }}"
-                Write-Host "Tip: Use Microsoft Remote Desktop app on your phone/PC. Ignore cert warnings."
-                Write-Host "====================================="
-                break
-              }
-            } catch {
-              Write-Host "Tunnel not ready yet... ($slept s elapsed). Checking again soon."
-            }
-            Start-Sleep -Seconds 10
-            $slept += 10
-          }
-          if ($slept -ge $maxWait) {
-            Get-Content ngrok.err -ErrorAction SilentlyContinue | Write-Host
-            Write-Error "Ngrok tunnel failed to start - see ngrok.err above for clues (bad token? network?). Retry workflow."
-          }
-
-      - name: Install Android Studio via Chocolatey (takes 5-15 min, optional for testing)
-        run: |
-          choco install androidstudio -y --ignore-checksums --force
-          Write-Host "Android Studio installed (or attempted). Launch via RDP desktop/start menu."
-
-      - name: Keep session alive
-        run: |
-          Write-Host "RDP is live - use the connection info above to connect."
-          while ($true) {
-            Start-Sleep -Seconds 300
-            Write-Host "Session still running... $(Get-Date)"
-          }
+      - name: Time Counter
+        run: python time.py
