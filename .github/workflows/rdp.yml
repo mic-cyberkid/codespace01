@@ -26,21 +26,33 @@ jobs:
 
       - name: Set permanent password & start RustDesk service
         run: |
-          # RustDesk CLI for config (run after install)
-          & "C:\Program Files\RustDesk\rustdesk.exe" --password "$env:RUSTDESK_PASSWORD"
-          # Install as service for persistence
-          & "C:\Program Files\RustDesk\rustdesk.exe" --install-service
-          Start-Service -Name RustDesk
+          cd "C:\Program Files\RustDesk"
+          .\rustdesk.exe --password "$env:RUSTDESK_PASSWORD"
+          Start-Sleep -Seconds 3
+          .\rustdesk.exe --install-service
+          Start-Sleep -Seconds 5
+          Start-Service -Name RustDesk -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 10   # crucial: give time to register ID with relay
+          Get-Service -Name RustDesk | Format-List Name, Status, StartType
 
       - name: Get RustDesk ID reliably
         run: |
-          & "C:\Program Files\RustDesk\rustdesk.exe" --get-id > C:\rustdesk_id.txt 2>&1
-          $id = Get-Content C:\rustdesk_id.txt -Raw
-          $id = $id.Trim()
-          Write-Host "RustDesk ID: $id"
+          cd "C:\Program Files\RustDesk"
+          # Force flush/output by piping through more (known workaround for RustDesk CLI)
+          & .\rustdesk.exe --get-id | more > C:\rustdesk_id.txt 2>&1
+          # Wait a tiny bit in case of delay
+          Start-Sleep -Milliseconds 500
+          $idRaw = Get-Content C:\rustdesk_id.txt -Raw -ErrorAction SilentlyContinue
+          if ($idRaw) {
+            $id = $idRaw.Trim()
+          } else {
+            $id = "ID_NOT_CAPTURED"
+          }
+          Write-Host "Captured RustDesk ID (after trim): '$id'"
+          Write-Host "Full file content for debug:"
+          Get-Content C:\rustdesk_id.txt
           Write-Host "Password: $env:RUSTDESK_PASSWORD"
-          Write-Host "Connect from your local RustDesk client using this ID + password"
-
+          Write-Host "Connect using this ID + password from your local client."
       
       - name: Display connection info & wait
         run: |
