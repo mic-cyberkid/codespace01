@@ -32,9 +32,11 @@ jobs:
           & "C:\Program Files\RustDesk\rustdesk.exe" --install-service
           Start-Service -Name RustDesk
 
-      - name: Get RustDesk ID (important - log this!)
+      - name: Get RustDesk ID reliably
         run: |
-          $id = & "C:\Program Files\RustDesk\rustdesk.exe" --get-id
+          & "C:\Program Files\RustDesk\rustdesk.exe" --get-id > C:\rustdesk_id.txt 2>&1
+          $id = Get-Content C:\rustdesk_id.txt -Raw
+          $id = $id.Trim()
           Write-Host "RustDesk ID: $id"
           Write-Host "Password: $env:RUSTDESK_PASSWORD"
           Write-Host "Connect from your local RustDesk client using this ID + password"
