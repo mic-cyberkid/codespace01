@@ -20,6 +20,13 @@ jobs:
           Set-Service -Name TermService -StartupType Automatic
           Start-Service -Name TermService -ErrorAction SilentlyContinue
 
+      - name: Disable WDDM for RDP (fix black screen)
+        run: |
+          reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v fEnableWddmDriver /t REG_DWORD /d 0 /f
+          reg add "HKLM\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v fEnableWddmDriver /t REG_DWORD /d 0 /f
+          # Optional: disable UDP to reduce protocol issues
+          reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services\Client" /v fClientDisableUDP /t REG_DWORD /d 1 /f
+
       - name: Create or update RDP user
         run: |
           net user ${{ env.RDP_USER }} "${{ env.RDP_PASS }}" /add /y
