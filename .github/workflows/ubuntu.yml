@@ -6,50 +6,47 @@ jobs:
   rustdesk-access:
     runs-on: ubuntu-latest
     timeout-minutes: 360
-
     env:
       RUSTDESK_PASSWORD: YourStrongPass123!   # CHANGE THIS
-
     steps:
-      - name: Install dependencies
+      - name: Update system & install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y wget libfuse2 xvfb
+          sudo apt update
+          sudo apt install -y wget curl xvfb dbus-x11
 
-      - name: Download RustDesk AppImage
+      - name: Download & install RustDesk
         run: |
-          wget -O rustdesk.AppImage https://github.com/rustdesk/rustdesk/releases/latest/download/rustdesk-1.4.5-x86_64.AppImage
-          chmod +x rustdesk.AppImage
+          wget https://github.com/rustdesk/rustdesk/releases/latest/download/rustdesk-1.4.5-x86_64.deb
+          sudo dpkg -i rustdesk-1.4.5-x86_64.deb || sudo apt -f install -y
 
       - name: Set RustDesk password
         run: |
-          ./rustdesk.AppImage --password "$RUSTDESK_PASSWORD"
+          rustdesk --password "$RUSTDESK_PASSWORD"
+          sleep 3
 
-      - name: Start RustDesk (headless)
+      - name: Install & start RustDesk systemd service
         run: |
-          # Run inside virtual X server to avoid black screen issues
-          Xvfb :99 -screen 0 1920x1080x24 &
-          export DISPLAY=:99
-
-          nohup ./rustdesk.AppImage > rustdesk.log 2>&1 &
+          sudo rustdesk --install-service
+          sudo systemctl daemon-reexec
+          sudo systemctl enable rustdesk
+          sudo systemctl start rustdesk
           sleep 10
+          systemctl status rustdesk --no-pager
 
-          ps aux | grep rustdesk | grep -v grep || true
-
-      - name: Get RustDesk ID
+      - name: Get RustDesk ID reliably
         run: |
-          export DISPLAY=:99
-          ID=$(./rustdesk.AppImage --get-id | tr -d '\n')
+          rustdesk --get-id | tee rustdesk_id.txt
+          ID=$(cat rustdesk_id.txt | tr -d '\n')
           echo "====================================="
           echo "RustDesk READY!"
           echo "ID: $ID"
           echo "Password: $RUSTDESK_PASSWORD"
-          echo "Download client: https://rustdesk.com/"
           echo "====================================="
 
-      - name: Keep session alive
+      - name: Keep runner alive
         run: |
+          echo "Session alive. Waiting for connections..."
           while true; do
-            echo "Session alive: $(date)"
+            echo "Still alive at $(date)"
             sleep 300
           done
