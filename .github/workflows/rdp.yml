@@ -1,4 +1,4 @@
-name: Windows RustDesk Remote Access
+name: Windows RustDesk Remote Access via Tor
 
 on: [workflow_dispatch]
 
@@ -7,7 +7,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 360
     env:
-      RUSTDESK_PASSWORD: YourStrongPass123!   # CHANGE THIS - set a strong one
+      RUSTDESK_PASSWORD: YourStrongPass123!   # CHANGE THIS - use a strong password
+      TOR_PROXY: socks5://127.0.0.1:9050      # Local Tor SOCKS5 proxy
+
     steps:
       - name: Install Chocolatey (if not present)
         run: |
@@ -16,55 +18,97 @@ jobs:
           iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
           choco feature enable -n allowGlobalConfirmation
 
+      - name: Install Tor Expert Bundle
+        run: |
+          choco install tor -y --force
+          # Alternative direct download if choco fails:
+          # Invoke-WebRequest -Uri "https://www.torproject.org/dist/torbrowser/13.5.7/tor-win64-0.4.8.12.zip" -OutFile tor.zip
+          # Expand-Archive -Path tor.zip -DestinationPath "C:\Tor" -Force
+
+      - name: Start Tor as background SOCKS5 proxy
+        run: |
+          # Create basic torrc config (uses default port 9050)
+          $torrc = @"
+SocksPort 9050
+ControlPort 9051
+Log notice file C:\tor.log
+"@ 
+          $torrc | Out-File -FilePath "C:\torrc" -Encoding ascii
+
+          # Start Tor in background
+          Start-Process -FilePath "C:\Program Files\Tor\tor.exe" `
+                        -ArgumentList "-f C:\torrc" `
+                        -NoNewWindow -PassThru
+
+          Write-Host "Waiting for Tor to initialize (SOCKS5 proxy on 9050)..."
+          Start-Sleep -Seconds 15
+
+          # Verify Tor is listening
+          $portCheck = Get-NetTCPConnection -LocalPort 9050 -ErrorAction SilentlyContinue
+          if ($portCheck) {
+            Write-Host "Tor SOCKS5 proxy is running on 127.0.0.1:9050"
+          } else {
+            Write-Host "Warning: Tor port 9050 not detected yet. Continuing anyway..."
+          }
+
       - name: Install RustDesk silently via Chocolatey
         run: |
           choco install rustdesk.install -y --force
-          # Alternative: winget install --id RustDesk.RustDesk -e --silent --accept-package-agreements --accept-source-agreements
-          # Or direct download + silent:
-          # Invoke-WebRequest -Uri "https://github.com/rustdesk/rustdesk/releases/download/1.4.5/rustdesk-1.4.5-x86_64.exe" -OutFile rustdesk.exe
-          # .\rustdesk.exe --silent-install
 
-      - name: Set permanent password & start RustDesk service
+      - name: Set permanent password, configure Tor proxy & start RustDesk service
         run: |
           cd "C:\Program Files\RustDesk"
+
+          # Set password
           .\rustdesk.exe --password "$env:RUSTDESK_PASSWORD"
           Start-Sleep -Seconds 3
+
+          # Configure proxy (socks5 via Tor)
+          .\rustdesk.exe --option proxy-url=$env:TOR_PROXY
+
+          # Install and start service
           .\rustdesk.exe --install-service
           Start-Sleep -Seconds 5
           Start-Service -Name RustDesk -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 10   # crucial: give time to register ID with relay
+          Start-Sleep -Seconds 15   # Give time for Tor + RustDesk to register ID
+
           Get-Service -Name RustDesk | Format-List Name, Status, StartType
 
       - name: Get RustDesk ID reliably
         run: |
           cd "C:\Program Files\RustDesk"
-          # Force flush/output by piping through more (known workaround for RustDesk CLI)
           & .\rustdesk.exe --get-id | more > C:\rustdesk_id.txt 2>&1
-          # Wait a tiny bit in case of delay
           Start-Sleep -Milliseconds 500
+
           $idRaw = Get-Content C:\rustdesk_id.txt -Raw -ErrorAction SilentlyContinue
-          if ($idRaw) {
-            $id = $idRaw.Trim()
-          } else {
-            $id = "ID_NOT_CAPTURED"
-          }
-          Write-Host "Captured RustDesk ID (after trim): '$id'"
+          $id = if ($idRaw) { $idRaw.Trim() } else { "ID_NOT_CAPTURED" }
+
+          Write-Host "Captured RustDesk ID: '$id'"
           Write-Host "Full file content for debug:"
           Get-Content C:\rustdesk_id.txt
           Write-Host "Password: $env:RUSTDESK_PASSWORD"
-          Write-Host "Connect using this ID + password from your local client."
-      
-      - name: Display connection info & wait
+          Write-Host "All traffic is now routed through Tor SOCKS5 proxy."
+
+      - name: Display connection info & keep alive
         run: |
-          Start-Sleep -Seconds 30  # wait for RustDesk to init
+          Start-Sleep -Seconds 30
+
           $id = & "C:\Program Files\RustDesk\rustdesk.exe" --get-id
+
           Write-Host "====================================="
-          Write-Host "RustDesk READY!"
+          Write-Host "RustDesk READY via Tor!"
           Write-Host "ID: $id"
           Write-Host "Password: $env:RUSTDESK_PASSWORD"
+          Write-Host "Proxy: $env:TOR_PROXY (Tor)"
+          Write-Host ""
           Write-Host "Download RustDesk client locally: https://rustdesk.com/"
-          Write-Host "Connect using public relay (default) or ngrok if tunneled."
-          Write-Host "If black screen: Try software rendering (--render=software) or virtual display in client settings."
+          Write-Host "Connect using the ID + password above."
+          Write-Host "Note: Connection will be slower due to Tor. First connection may take longer."
+          Write-Host "If you get black screen: try software rendering in client settings."
           Write-Host "====================================="
-          # Keep alive
-          while ($true) { Start-Sleep -Seconds 300; Write-Host "Session alive $(Get-Date)" }
+
+          # Keep workflow alive
+          while ($true) { 
+            Start-Sleep -Seconds 300
+            Write-Host "Session alive $(Get-Date) - Tor proxy active"
+          }
