@@ -31,7 +31,7 @@ jobs:
           # Configure SOCKS5 Proxy (Tor default is 127.0.0.1:9050)
           # Note: RustDesk CLI configuration options can vary by version.
           # If --proxy isn't supported via CLI, RustDesk uses the system proxy or internal config.
-          .\rustdesk.exe --set-proxy "127.0.0.1:9050"
+          #.\rustdesk.exe --set-proxy "127.0.0.1:9050"
           
           .\rustdesk.exe --install-service
           Start-Sleep -Seconds 5
