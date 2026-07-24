@@ -5,190 +5,83 @@ on:
 
 jobs:
   rustdesk-access:
-
     runs-on: windows-2022
     timeout-minutes: 360
 
     env:
-      RUSTDESK_PASSWORD: YourStrongPass123! # Change this
+      RUSTDESK_PASSWORD: YourStrongPass123!   # ← Change this!
 
     steps:
-
       - name: Install Tor and RustDesk
         shell: pwsh
         run: |
           choco install tor rustdesk.install -y --force
 
-
       - name: Start Tor Proxy
         shell: pwsh
         run: |
           Write-Host "Starting Tor..."
-
-          Start-Process `
-            "C:\ProgramData\chocolatey\bin\tor.exe" `
-            -WindowStyle Hidden
-
-          Start-Sleep -Seconds 15
+          Start-Process "C:\ProgramData\chocolatey\bin\tor.exe" -WindowStyle Hidden
+          Start-Sleep -Seconds 20
 
           if (Test-NetConnection 127.0.0.1 -Port 9050 -InformationLevel Quiet) {
               Write-Host "Tor SOCKS5 is running."
-          }
-          else {
+          } else {
               throw "Tor failed to start."
           }
 
-
-      - name: Configure RustDesk
+      - name: Configure & Start RustDesk Service
         shell: pwsh
         run: |
           $rustdesk = "C:\Program Files\RustDesk\RustDesk.exe"
-
-          Write-Host "Setting RustDesk password..."
-
+          
+          Write-Host "Setting password..."
           & $rustdesk --password "$env:RUSTDESK_PASSWORD"
-
-
-          Write-Host "Installing RustDesk service..."
-
+          
+          Write-Host "Installing service..."
           & $rustdesk --install-service
+          
+          Start-Sleep -Seconds 8
+          
+          Write-Host "Starting service..."
+          Start-Service RustDesk -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 12
 
+          Write-Host "Launching tray (background)..."
+          Start-Process $rustdesk -ArgumentList "--tray" -WindowStyle Hidden
 
-          Start-Sleep -Seconds 5
-
-
-          Write-Host "Starting RustDesk service..."
-
-          Start-Service RustDesk `
-            -ErrorAction SilentlyContinue
-
-
-          Start-Sleep -Seconds 10
-
-
-          Write-Host "Launching RustDesk tray..."
-
-          Start-Process `
-            -FilePath $rustdesk `
-            -ArgumentList "--tray" `
-            -WindowStyle Hidden
-
-
-          Start-Sleep -Seconds 20
-
-
-          Write-Host "RustDesk processes:"
-
-          Get-Process RustDesk |
-            Select-Object Name,Id,Path,SessionId
-
-
-
-      - name: Collect Diagnostics
+      - name: Collect Diagnostics (Improved)
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
-          function Header($t) {
-              Write-Host ""
-              Write-Host "======================================================"
+          function Header($t) { 
+              Write-Host "`n======================================================"
               Write-Host $t
-              Write-Host "======================================================"
-          }
-          Header "OS"
-          systeminfo | Select-Object -First 15
-          Header "RustDesk Executable"
-          Get-ChildItem "C:\Program Files\RustDesk"
-          cd "C:\Program Files\RustDesk"
-          Header "--version"
-          try {
-              .\rustdesk.exe --version
-          } catch {
-              $_
-          }
-          Write-Host "ExitCode=$LASTEXITCODE"
-          Header "--help"
-          try {
-              .\rustdesk.exe --help
-          } catch {
-              $_
-          }
-          Write-Host "ExitCode=$LASTEXITCODE"
-          Header "Install Service"
-          try {
-              .\rustdesk.exe --install-service
-          } catch {
-              $_
-          }
-          Write-Host "ExitCode=$LASTEXITCODE"
-          Start-Sleep 10
-          Header "Services"
-          Get-Service *RustDesk* -ErrorAction SilentlyContinue | Format-List *
-          Header "Start Service"
-          try {
-              Start-Service RustDesk
-          } catch {
-              $_
-          }
-          Start-Sleep 15
-          Header "Service Status"
-          Get-Service RustDesk -ErrorAction SilentlyContinue | Format-List *
-          Header "Processes"
-          Get-Process rustdesk -ErrorAction SilentlyContinue | Format-List *
-          Header "--get-id"
-          try {
-              .\rustdesk.exe --get-id
-          } catch {
-              $_
-          }
-          Write-Host "ExitCode=$LASTEXITCODE"
-          Header "--get-status"
-          try {
-              .\rustdesk.exe --get-status
-          } catch {
-              $_
-          }
-          Write-Host "ExitCode=$LASTEXITCODE"
-          Header "--config"
-          try {
-              .\rustdesk.exe --config
-          } catch {
-              $_
-          }
-          Write-Host "ExitCode=$LASTEXITCODE"
-          Header "APPDATA"
-          Write-Host $env:APPDATA
-          Header "PROGRAMDATA"
-          Write-Host $env:ProgramData
-          Header "User RustDesk"
-          Get-ChildItem "$env:APPDATA\RustDesk" -Recurse -Force -ErrorAction SilentlyContinue
-          Header "LocalService RustDesk"
-          Get-ChildItem "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk" -Recurse -Force -ErrorAction SilentlyContinue
-          Header "ProgramData RustDesk"
-          Get-ChildItem "C:\ProgramData\RustDesk" -Recurse -Force -ErrorAction SilentlyContinue
-          
-      - name: Install RustDesk
-        shell: pwsh
-        run: |
-          Write-Host "RustDesk session active."
-      
-          while ($true) {
-      
-              Start-Sleep -Seconds 300
-      
-              Write-Host `
-                "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Runner still alive."
+              Write-Host "======================================================" 
           }
 
+          Header "RustDesk ID & Status"
+          $id = & "C:\Program Files\RustDesk\RustDesk.exe" --get-id | Out-String
+          Write-Host "ID: $id"
+          
+          $status = & "C:\Program Files\RustDesk\RustDesk.exe" --get-status | Out-String
+          Write-Host "Status: $status"
+
+          Header "Service & Processes"
+          Get-Service *RustDesk* -ErrorAction SilentlyContinue | Format-List *
+          Get-Process rustdesk -ErrorAction SilentlyContinue | Format-List *
+
+          # Extra diagnostics...
+          Header "Config locations"
+          Get-ChildItem "$env:APPDATA\RustDesk" -Recurse -Force -ErrorAction SilentlyContinue | Select FullName
+          Get-ChildItem "C:\ProgramData\RustDesk" -Recurse -Force -ErrorAction SilentlyContinue | Select FullName
 
       - name: Keep Runner Alive
         shell: pwsh
         run: |
-          Write-Host "RustDesk session active."
-
+          Write-Host "RustDesk should now be accessible via Tor SOCKS5."
+          Write-Host "ID and connection info should appear in previous step logs."
           while ($true) {
-
               Start-Sleep -Seconds 300
-
-              Write-Host `
-                "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Runner still alive."
+              Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Runner still alive. Check previous step for ID."
           }
