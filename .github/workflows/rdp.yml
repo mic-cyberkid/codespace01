@@ -56,23 +56,48 @@ jobs:
       - name: Get RustDesk Connection Info
         shell: pwsh
         run: |
-          $rustDeskPath = "$env:APPDATA\RustDesk"
-
           Write-Host "Searching for RustDesk ID..."
 
-          $idFile = Get-ChildItem `
-            -Path $rustDeskPath `
-            -File |
-            Where-Object {
-              $_.Name -match '^\d+$'
-            } |
-            Select-Object -First 1
+          $locations = @(
+            "$env:APPDATA\RustDesk",
+            "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk"
+          )
 
-          if (-not $idFile) {
-              throw "RustDesk ID not found."
+          $id = $null
+
+          foreach ($path in $locations) {
+
+              Write-Host "Checking: $path"
+
+              if (Test-Path $path) {
+
+                  $idFile = Get-ChildItem `
+                    -Path $path `
+                    -File `
+                    -ErrorAction SilentlyContinue |
+                    Where-Object {
+                      $_.Name -match '^\d+$'
+                    } |
+                    Select-Object -First 1
+
+                  if ($idFile) {
+                      $id = $idFile.Name
+                      break
+                  }
+              }
           }
 
-          $id = $idFile.Name
+          if (-not $id) {
+              Write-Host "RustDesk directories:"
+              
+              foreach ($path in $locations) {
+                  if (Test-Path $path) {
+                      Get-ChildItem $path -Recurse -Force
+                  }
+              }
+
+              throw "RustDesk ID not found."
+          }
 
           "RUSTDESK_ID=$id" | Out-File `
             -FilePath $env:GITHUB_ENV `
