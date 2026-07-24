@@ -42,36 +42,42 @@ jobs:
 
           Start-Service RustDesk -ErrorAction SilentlyContinue
 
-      - name: Wait for RustDesk ID
+      - name: Get Connection Info
         shell: pwsh
         run: |
           cd "C:\Program Files\RustDesk"
-
-          $id = ""
-
-          for ($i = 1; $i -le 24; $i++) {
-              try {
-                  $id = (& .\rustdesk.exe --get-id).Trim()
-              } catch {
-                  $id = ""
-              }
-
-              if (![string]::IsNullOrWhiteSpace($id)) {
-                  break
-              }
-
-              Write-Host "Waiting for RustDesk ID... ($i/24)"
-              Start-Sleep 5
+      
+          $idFile = "$env:TEMP\rustdesk-id.txt"
+      
+          # Remove old file if it exists
+          if (Test-Path $idFile) {
+              Remove-Item $idFile -Force
           }
-
-          if ([string]::IsNullOrWhiteSpace($id)) {
-              throw "RustDesk ID was not generated."
+      
+          # Write RustDesk ID to file
+          .\rustdesk.exe --get-id *> $idFile
+      
+          Start-Sleep -Seconds 3
+      
+          if (Test-Path $idFile) {
+              $id = (Get-Content $idFile -Raw).Trim()
+          } else {
+              $id = ""
           }
-
-          "RUSTDESK_ID=$id" | Out-File `
-              -FilePath $env:GITHUB_ENV `
-              -Encoding utf8 `
-              -Append
+      
+          Write-Host "===== RustDesk Connection ====="
+          Write-Host "ID: $id"
+          Write-Host "Password: $env:RUSTDESK_PASSWORD"
+          Write-Host "==============================="
+      
+          @"
+          ## RustDesk Connection
+      
+          **RustDesk ID:** $id
+      
+          **Password:** $env:RUSTDESK_PASSWORD
+          "@ >> $env:GITHUB_STEP_SUMMARY
+    
 
       - name: Display Connection Info
         shell: pwsh
