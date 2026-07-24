@@ -6,7 +6,7 @@ on:
 jobs:
   diagnose:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 360
 
     steps:
       - name: Install RustDesk
@@ -140,20 +140,16 @@ jobs:
 
           Get-ChildItem "C:\ProgramData\RustDesk" -Recurse -Force -ErrorAction SilentlyContinue
 
-          Header "Registry"
-
-          reg query HKCU\Software\RustDesk /s
-
-          reg query HKLM\Software\RustDesk /s
-
-          reg query HKLM\Software\WOW6432Node\RustDesk /s
-
-          Header "Event Logs"
-
-          Get-WinEvent -MaxEvents 30 |
-            Where-Object {
-                $_.ProviderName -match "RustDesk"
-            } |
-            Format-List *
-
-          Header "Finished"
+          
+      - name: Install RustDesk
+        shell: pwsh
+        run: |
+          Write-Host "RustDesk session active."
+      
+          while ($true) {
+      
+              Start-Sleep -Seconds 300
+      
+              Write-Host `
+                "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Runner still alive."
+          }
