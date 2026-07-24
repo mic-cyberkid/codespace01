@@ -1,0 +1,159 @@
+name: RustDesk Diagnostics
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Install RustDesk
+        shell: pwsh
+        run: |
+          choco install rustdesk.install -y --force
+
+      - name: Collect Diagnostics
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+
+          function Header($t) {
+              Write-Host ""
+              Write-Host "======================================================"
+              Write-Host $t
+              Write-Host "======================================================"
+          }
+
+          Header "OS"
+
+          systeminfo | Select-Object -First 15
+
+          Header "RustDesk Executable"
+
+          Get-ChildItem "C:\Program Files\RustDesk"
+
+          cd "C:\Program Files\RustDesk"
+
+          Header "--version"
+
+          try {
+              .\rustdesk.exe --version
+          } catch {
+              $_
+          }
+
+          Write-Host "ExitCode=$LASTEXITCODE"
+
+          Header "--help"
+
+          try {
+              .\rustdesk.exe --help
+          } catch {
+              $_
+          }
+
+          Write-Host "ExitCode=$LASTEXITCODE"
+
+          Header "Install Service"
+
+          try {
+              .\rustdesk.exe --install-service
+          } catch {
+              $_
+          }
+
+          Write-Host "ExitCode=$LASTEXITCODE"
+
+          Start-Sleep 10
+
+          Header "Services"
+
+          Get-Service *RustDesk* -ErrorAction SilentlyContinue | Format-List *
+
+          Header "Start Service"
+
+          try {
+              Start-Service RustDesk
+          } catch {
+              $_
+          }
+
+          Start-Sleep 15
+
+          Header "Service Status"
+
+          Get-Service RustDesk -ErrorAction SilentlyContinue | Format-List *
+
+          Header "Processes"
+
+          Get-Process rustdesk -ErrorAction SilentlyContinue | Format-List *
+
+          Header "--get-id"
+
+          try {
+              .\rustdesk.exe --get-id
+          } catch {
+              $_
+          }
+
+          Write-Host "ExitCode=$LASTEXITCODE"
+
+          Header "--get-status"
+
+          try {
+              .\rustdesk.exe --get-status
+          } catch {
+              $_
+          }
+
+          Write-Host "ExitCode=$LASTEXITCODE"
+
+          Header "--config"
+
+          try {
+              .\rustdesk.exe --config
+          } catch {
+              $_
+          }
+
+          Write-Host "ExitCode=$LASTEXITCODE"
+
+          Header "APPDATA"
+
+          Write-Host $env:APPDATA
+
+          Header "PROGRAMDATA"
+
+          Write-Host $env:ProgramData
+
+          Header "User RustDesk"
+
+          Get-ChildItem "$env:APPDATA\RustDesk" -Recurse -Force -ErrorAction SilentlyContinue
+
+          Header "LocalService RustDesk"
+
+          Get-ChildItem "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk" -Recurse -Force -ErrorAction SilentlyContinue
+
+          Header "ProgramData RustDesk"
+
+          Get-ChildItem "C:\ProgramData\RustDesk" -Recurse -Force -ErrorAction SilentlyContinue
+
+          Header "Registry"
+
+          reg query HKCU\Software\RustDesk /s
+
+          reg query HKLM\Software\RustDesk /s
+
+          reg query HKLM\Software\WOW6432Node\RustDesk /s
+
+          Header "Event Logs"
+
+          Get-WinEvent -MaxEvents 30 |
+            Where-Object {
+                $_.ProviderName -match "RustDesk"
+            } |
+            Format-List *
+
+          Header "Finished"
