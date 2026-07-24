@@ -5,34 +5,39 @@ on:
 
 jobs:
   rustdesk-access:
-    runs-on: windows-latest
+
+    runs-on: windows-2022
     timeout-minutes: 360
 
     env:
       RUSTDESK_PASSWORD: YourStrongPass123! # Change this
 
     steps:
+
       - name: Install Tor and RustDesk
         shell: pwsh
         run: |
           choco install tor rustdesk.install -y --force
 
+
       - name: Start Tor Proxy
         shell: pwsh
         run: |
+          Write-Host "Starting Tor..."
+
           Start-Process `
             "C:\ProgramData\chocolatey\bin\tor.exe" `
             -WindowStyle Hidden
 
-          Write-Host "Waiting for Tor startup..."
           Start-Sleep -Seconds 15
 
           if (Test-NetConnection 127.0.0.1 -Port 9050 -InformationLevel Quiet) {
-              Write-Host "Tor SOCKS5 proxy is running."
+              Write-Host "Tor SOCKS5 is running."
           }
           else {
               throw "Tor failed to start."
           }
+
 
       - name: Configure RustDesk
         shell: pwsh
@@ -40,34 +45,63 @@ jobs:
           $rustdesk = "C:\Program Files\RustDesk\RustDesk.exe"
 
           Write-Host "Setting RustDesk password..."
+
           & $rustdesk --password "$env:RUSTDESK_PASSWORD"
 
+
           Write-Host "Installing RustDesk service..."
+
           & $rustdesk --install-service
+
 
           Start-Sleep -Seconds 5
 
-          Start-Service RustDesk -ErrorAction SilentlyContinue
 
-          Start-Sleep -Seconds 15
+          Write-Host "Starting RustDesk service..."
 
-          Get-Service RustDesk
+          Start-Service RustDesk `
+            -ErrorAction SilentlyContinue
+
+
+          Start-Sleep -Seconds 10
+
+
+          Write-Host "Launching RustDesk tray..."
+
+          Start-Process `
+            -FilePath $rustdesk `
+            -ArgumentList "--tray" `
+            -WindowStyle Hidden
+
+
+          Start-Sleep -Seconds 20
+
+
+          Write-Host "RustDesk processes:"
+
+          Get-Process RustDesk |
+            Select-Object Name,Id,Path,SessionId
+
+
 
       - name: Get RustDesk Connection Info
         shell: pwsh
         run: |
-          Write-Host "Searching for RustDesk ID..."
+          Write-Host "Searching RustDesk ID..."
 
           $locations = @(
             "$env:APPDATA\RustDesk",
             "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk"
           )
 
+
           $id = $null
+
 
           foreach ($path in $locations) {
 
               Write-Host "Checking: $path"
+
 
               if (Test-Path $path) {
 
@@ -76,9 +110,10 @@ jobs:
                     -File `
                     -ErrorAction SilentlyContinue |
                     Where-Object {
-                      $_.Name -match '^\d+$'
+                        $_.Name -match '^\d+$'
                     } |
                     Select-Object -First 1
+
 
                   if ($idFile) {
                       $id = $idFile.Name
@@ -87,22 +122,32 @@ jobs:
               }
           }
 
+
           if (-not $id) {
-              Write-Host "RustDesk directories:"
-              
+
+              Write-Host "RustDesk folders:"
+
               foreach ($path in $locations) {
+
                   if (Test-Path $path) {
-                      Get-ChildItem $path -Recurse -Force
+                      Get-ChildItem `
+                        $path `
+                        -Recurse `
+                        -Force
                   }
               }
 
               throw "RustDesk ID not found."
           }
 
+
+
           "RUSTDESK_ID=$id" | Out-File `
             -FilePath $env:GITHUB_ENV `
             -Encoding utf8 `
             -Append
+
+
 
           Write-Host ""
           Write-Host "================================="
@@ -113,15 +158,19 @@ jobs:
           Write-Host "Tor      : 127.0.0.1:9050"
           Write-Host "================================="
 
+
+
           @"
           ## RustDesk Connection
 
-          **ID:** $id
+          **RustDesk ID:** $id
 
           **Password:** $env:RUSTDESK_PASSWORD
 
           **Tor SOCKS5:** 127.0.0.1:9050
           "@ >> $env:GITHUB_STEP_SUMMARY
+
+
 
       - name: Keep Runner Alive
         shell: pwsh
@@ -129,6 +178,9 @@ jobs:
           Write-Host "RustDesk session active."
 
           while ($true) {
+
               Start-Sleep -Seconds 300
-              Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Still running..."
+
+              Write-Host `
+                "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Runner still alive."
           }
