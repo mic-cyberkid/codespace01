@@ -64,8 +64,7 @@ jobs:
           $id = & "C:\Program Files\RustDesk\RustDesk.exe" --get-id | Out-String
           Write-Host "ID: $id"
           
-          $status = & "C:\Program Files\RustDesk\RustDesk.exe" --get-status | Out-String
-          Write-Host "Status: $status"
+  
 
           
       - name: Keep Runner Alive
