@@ -84,92 +84,100 @@ jobs:
 
 
 
-      - name: Get RustDesk Connection Info
+      - name: Collect Diagnostics
         shell: pwsh
         run: |
-          Write-Host "Searching RustDesk ID..."
-
-          $locations = @(
-            "$env:APPDATA\RustDesk",
-            "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk"
-          )
-
-
-          $id = $null
-
-
-          foreach ($path in $locations) {
-
-              Write-Host "Checking: $path"
-
-
-              if (Test-Path $path) {
-
-                  $idFile = Get-ChildItem `
-                    -Path $path `
-                    -File `
-                    -ErrorAction SilentlyContinue |
-                    Where-Object {
-                        $_.Name -match '^\d+$'
-                    } |
-                    Select-Object -First 1
-
-
-                  if ($idFile) {
-                      $id = $idFile.Name
-                      break
-                  }
-              }
+          $ErrorActionPreference = "Continue"
+          function Header($t) {
+              Write-Host ""
+              Write-Host "======================================================"
+              Write-Host $t
+              Write-Host "======================================================"
           }
-
-
-          if (-not $id) {
-
-              Write-Host "RustDesk folders:"
-
-              foreach ($path in $locations) {
-
-                  if (Test-Path $path) {
-                      Get-ChildItem `
-                        $path `
-                        -Recurse `
-                        -Force
-                  }
-              }
-
-              throw "RustDesk ID not found."
+          Header "OS"
+          systeminfo | Select-Object -First 15
+          Header "RustDesk Executable"
+          Get-ChildItem "C:\Program Files\RustDesk"
+          cd "C:\Program Files\RustDesk"
+          Header "--version"
+          try {
+              .\rustdesk.exe --version
+          } catch {
+              $_
           }
-
-
-
-          "RUSTDESK_ID=$id" | Out-File `
-            -FilePath $env:GITHUB_ENV `
-            -Encoding utf8 `
-            -Append
-
-
-
-          Write-Host ""
-          Write-Host "================================="
-          Write-Host "RustDesk Ready"
-          Write-Host ""
-          Write-Host "ID       : $id"
-          Write-Host "Password : $env:RUSTDESK_PASSWORD"
-          Write-Host "Tor      : 127.0.0.1:9050"
-          Write-Host "================================="
-
-
-
-          @"
-          ## RustDesk Connection
-
-          **RustDesk ID:** $id
-
-          **Password:** $env:RUSTDESK_PASSWORD
-
-          **Tor SOCKS5:** 127.0.0.1:9050
-          "@ >> $env:GITHUB_STEP_SUMMARY
-
+          Write-Host "ExitCode=$LASTEXITCODE"
+          Header "--help"
+          try {
+              .\rustdesk.exe --help
+          } catch {
+              $_
+          }
+          Write-Host "ExitCode=$LASTEXITCODE"
+          Header "Install Service"
+          try {
+              .\rustdesk.exe --install-service
+          } catch {
+              $_
+          }
+          Write-Host "ExitCode=$LASTEXITCODE"
+          Start-Sleep 10
+          Header "Services"
+          Get-Service *RustDesk* -ErrorAction SilentlyContinue | Format-List *
+          Header "Start Service"
+          try {
+              Start-Service RustDesk
+          } catch {
+              $_
+          }
+          Start-Sleep 15
+          Header "Service Status"
+          Get-Service RustDesk -ErrorAction SilentlyContinue | Format-List *
+          Header "Processes"
+          Get-Process rustdesk -ErrorAction SilentlyContinue | Format-List *
+          Header "--get-id"
+          try {
+              .\rustdesk.exe --get-id
+          } catch {
+              $_
+          }
+          Write-Host "ExitCode=$LASTEXITCODE"
+          Header "--get-status"
+          try {
+              .\rustdesk.exe --get-status
+          } catch {
+              $_
+          }
+          Write-Host "ExitCode=$LASTEXITCODE"
+          Header "--config"
+          try {
+              .\rustdesk.exe --config
+          } catch {
+              $_
+          }
+          Write-Host "ExitCode=$LASTEXITCODE"
+          Header "APPDATA"
+          Write-Host $env:APPDATA
+          Header "PROGRAMDATA"
+          Write-Host $env:ProgramData
+          Header "User RustDesk"
+          Get-ChildItem "$env:APPDATA\RustDesk" -Recurse -Force -ErrorAction SilentlyContinue
+          Header "LocalService RustDesk"
+          Get-ChildItem "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk" -Recurse -Force -ErrorAction SilentlyContinue
+          Header "ProgramData RustDesk"
+          Get-ChildItem "C:\ProgramData\RustDesk" -Recurse -Force -ErrorAction SilentlyContinue
+          
+      - name: Install RustDesk
+        shell: pwsh
+        run: |
+          Write-Host "RustDesk session active."
+      
+          while ($true) {
+      
+              Start-Sleep -Seconds 300
+      
+              Write-Host `
+                "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Runner still alive."
+          }
 
 
       - name: Keep Runner Alive
