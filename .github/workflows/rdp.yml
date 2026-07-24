@@ -67,15 +67,7 @@ jobs:
           $status = & "C:\Program Files\RustDesk\RustDesk.exe" --get-status | Out-String
           Write-Host "Status: $status"
 
-          Header "Service & Processes"
-          Get-Service *RustDesk* -ErrorAction SilentlyContinue | Format-List *
-          Get-Process rustdesk -ErrorAction SilentlyContinue | Format-List *
-
-          # Extra diagnostics...
-          Header "Config locations"
-          Get-ChildItem "$env:APPDATA\RustDesk" -Recurse -Force -ErrorAction SilentlyContinue | Select FullName
-          Get-ChildItem "C:\ProgramData\RustDesk" -Recurse -Force -ErrorAction SilentlyContinue | Select FullName
-
+          
       - name: Keep Runner Alive
         shell: pwsh
         run: |
