@@ -12,89 +12,86 @@ jobs:
       RUSTDESK_PASSWORD: YourStrongPass123! # Change this
 
     steps:
-      - name: Install Dependencies (Tor & RustDesk)
+      - name: Install Tor and RustDesk
         shell: pwsh
         run: |
           choco install tor rustdesk.install -y --force
 
-      - name: Start Tor
+      - name: Start Tor Proxy
         shell: pwsh
         run: |
-          Start-Process "C:\ProgramData\chocolatey\bin\tor.exe" -WindowStyle Hidden
+          Start-Process `
+            "C:\ProgramData\chocolatey\bin\tor.exe" `
+            -WindowStyle Hidden
 
-          Write-Host "Waiting for Tor..."
-          Start-Sleep 15
+          Write-Host "Waiting for Tor startup..."
+          Start-Sleep -Seconds 15
 
-          Test-NetConnection 127.0.0.1 -Port 9050
+          if (Test-NetConnection 127.0.0.1 -Port 9050 -InformationLevel Quiet) {
+              Write-Host "Tor SOCKS5 proxy is running."
+          }
+          else {
+              throw "Tor failed to start."
+          }
 
       - name: Configure RustDesk
         shell: pwsh
         run: |
-          cd "C:\Program Files\RustDesk"
+          $rustdesk = "C:\Program Files\RustDesk\RustDesk.exe"
 
-          # Set permanent password
-          .\rustdesk.exe --password "$env:RUSTDESK_PASSWORD"
+          Write-Host "Setting RustDesk password..."
+          & $rustdesk --password "$env:RUSTDESK_PASSWORD"
 
-          # Install/start service
-          .\rustdesk.exe --install-service
+          Write-Host "Installing RustDesk service..."
+          & $rustdesk --install-service
 
-          Start-Sleep 5
+          Start-Sleep -Seconds 5
 
           Start-Service RustDesk -ErrorAction SilentlyContinue
 
-      - name: Get Connection Info
-        shell: pwsh
-        run: |
-          cd "C:\Program Files\RustDesk"
-      
-          $idFile = "$env:TEMP\rustdesk-id.txt"
-      
-          # Remove old file if it exists
-          if (Test-Path $idFile) {
-              Remove-Item $idFile -Force
-          }
-      
-          # Write RustDesk ID to file
-          .\rustdesk.exe --get-id *> $idFile
-      
-          Start-Sleep -Seconds 3
-      
-          if (Test-Path $idFile) {
-              $id = (Get-Content $idFile -Raw).Trim()
-          } else {
-              $id = ""
-          }
-      
-          Write-Host "===== RustDesk Connection ====="
-          Write-Host "ID: $id"
-          Write-Host "Password: $env:RUSTDESK_PASSWORD"
-          Write-Host "==============================="
-      
-          @"
-          ## RustDesk Connection
-      
-          **RustDesk ID:** $id
-      
-          **Password:** $env:RUSTDESK_PASSWORD
-          "@ >> $env:GITHUB_STEP_SUMMARY
-    
+          Start-Sleep -Seconds 15
 
-      - name: Display Connection Info
+          Get-Service RustDesk
+
+      - name: Get RustDesk Connection Info
         shell: pwsh
         run: |
+          $rustDeskPath = "$env:APPDATA\RustDesk"
+
+          Write-Host "Searching for RustDesk ID..."
+
+          $idFile = Get-ChildItem `
+            -Path $rustDeskPath `
+            -File |
+            Where-Object {
+              $_.Name -match '^\d+$'
+            } |
+            Select-Object -First 1
+
+          if (-not $idFile) {
+              throw "RustDesk ID not found."
+          }
+
+          $id = $idFile.Name
+
+          "RUSTDESK_ID=$id" | Out-File `
+            -FilePath $env:GITHUB_ENV `
+            -Encoding utf8 `
+            -Append
+
           Write-Host ""
-          Write-Host "====================================="
-          Write-Host "RustDesk is ready!"
+          Write-Host "================================="
+          Write-Host "RustDesk Ready"
           Write-Host ""
-          Write-Host "Tor SOCKS5 : 127.0.0.1:9050"
-          Write-Host "RustDesk ID: $env:RUSTDESK_ID"
-          Write-Host "Password   : $env:RUSTDESK_PASSWORD"
-          Write-Host "====================================="
+          Write-Host "ID       : $id"
+          Write-Host "Password : $env:RUSTDESK_PASSWORD"
+          Write-Host "Tor      : 127.0.0.1:9050"
+          Write-Host "================================="
 
           @"
           ## RustDesk Connection
 
-          **RustDesk ID:** $env:RUSTDESK_ID
+          **ID:** $id
 
           **Password:** $env:RUSTDESK_PASSWORD
 
@@ -104,9 +101,9 @@ jobs:
       - name: Keep Runner Alive
         shell: pwsh
         run: |
-          Write-Host "Runner will remain online..."
+          Write-Host "RustDesk session active."
 
           while ($true) {
-              Start-Sleep 300
-              Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Session active"
+              Start-Sleep -Seconds 300
+              Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Still running..."
           }
