@@ -1,57 +1,106 @@
 name: Windows RustDesk Remote Access (via Tor)
-on: [workflow_dispatch]
+
+on:
+  workflow_dispatch:
 
 jobs:
   rustdesk-access:
     runs-on: windows-latest
     timeout-minutes: 360
+
     env:
-      RUSTDESK_PASSWORD: YourStrongPass123! # CHANGE THIS
+      RUSTDESK_PASSWORD: YourStrongPass123! # Change this
+
     steps:
       - name: Install Dependencies (Tor & RustDesk)
+        shell: pwsh
         run: |
           choco install tor rustdesk.install -y --force
-          
-      - name: Start Tor Service
-        run: |
-          # Start Tor in the background
-          Start-Process -FilePath "C:\ProgramData\chocolatey\bin\tor.exe" -WindowStyle Hidden
-          Write-Host "Waiting for Tor to initialize..."
-          Start-Sleep -Seconds 15
-          # Verify Tor is listening on 9050
-          Test-NetConnection -ComputerName 127.0.0.1 -Port 9050
 
-      - name: Configure RustDesk Proxy & Set Password
+      - name: Start Tor
+        shell: pwsh
+        run: |
+          Start-Process "C:\ProgramData\chocolatey\bin\tor.exe" -WindowStyle Hidden
+
+          Write-Host "Waiting for Tor..."
+          Start-Sleep 15
+
+          Test-NetConnection 127.0.0.1 -Port 9050
+
+      - name: Configure RustDesk
+        shell: pwsh
         run: |
           cd "C:\Program Files\RustDesk"
-          
-          # Set the password
+
+          # Set permanent password
           .\rustdesk.exe --password "$env:RUSTDESK_PASSWORD"
-          
-          # Configure SOCKS5 Proxy (Tor default is 127.0.0.1:9050)
-          # Note: RustDesk CLI configuration options can vary by version.
-          # If --proxy isn't supported via CLI, RustDesk uses the system proxy or internal config.
-          #.\rustdesk.exe --set-proxy "127.0.0.1:9050"
-          
-          .\rustdesk.exe --install-service
-          Start-Sleep -Seconds 5
-          Start-Service -Name RustDesk -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 15 
 
-      - name: Get Connection Info
+          # Install/start service
+          .\rustdesk.exe --install-service
+
+          Start-Sleep 5
+
+          Start-Service RustDesk -ErrorAction SilentlyContinue
+
+      - name: Wait for RustDesk ID
+        shell: pwsh
         run: |
           cd "C:\Program Files\RustDesk"
-          $idRaw = & .\rustdesk.exe --get-id | Out-String
-          $id = $idRaw.Trim()
-          
+
+          $id = ""
+
+          for ($i = 1; $i -le 24; $i++) {
+              try {
+                  $id = (& .\rustdesk.exe --get-id).Trim()
+              } catch {
+                  $id = ""
+              }
+
+              if (![string]::IsNullOrWhiteSpace($id)) {
+                  break
+              }
+
+              Write-Host "Waiting for RustDesk ID... ($i/24)"
+              Start-Sleep 5
+          }
+
+          if ([string]::IsNullOrWhiteSpace($id)) {
+              throw "RustDesk ID was not generated."
+          }
+
+          "RUSTDESK_ID=$id" | Out-File `
+              -FilePath $env:GITHUB_ENV `
+              -Encoding utf8 `
+              -Append
+
+      - name: Display Connection Info
+        shell: pwsh
+        run: |
+          Write-Host ""
           Write-Host "====================================="
-          Write-Host "Tor Proxy: Running on 127.0.0.1:9050"
-          Write-Host "RustDesk ID: $id"
-          Write-Host "Password: $env:RUSTDESK_PASSWORD"
+          Write-Host "RustDesk is ready!"
+          Write-Host ""
+          Write-Host "Tor SOCKS5 : 127.0.0.1:9050"
+          Write-Host "RustDesk ID: $env:RUSTDESK_ID"
+          Write-Host "Password   : $env:RUSTDESK_PASSWORD"
           Write-Host "====================================="
-          
-          # Keep alive loop
-          while ($true) { 
-            Start-Sleep -Seconds 300
-            Write-Host "Session active: $(Get-Date)" 
+
+          @"
+          ## RustDesk Connection
+
+          **RustDesk ID:** $env:RUSTDESK_ID
+
+          **Password:** $env:RUSTDESK_PASSWORD
+
+          **Tor SOCKS5:** 127.0.0.1:9050
+          "@ >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Keep Runner Alive
+        shell: pwsh
+        run: |
+          Write-Host "Runner will remain online..."
+
+          while ($true) {
+              Start-Sleep 300
+              Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Session active"
           }
